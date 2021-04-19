@@ -1193,7 +1193,7 @@ pre .javascript .function {
 }
 .links-of-author a::before,
 .links-of-author span.exturl::before {
-  background: #ffa48f;
+  background: #cded1b;
   border-radius: 50%;
   content: ' ';
   display: inline-block;
@@ -2529,14 +2529,14 @@ hr {
   display: none;
   visibility: hidden;
 }
-.category-all-title {
+.category-all-page .category-all-title {
   display: none;
   visibility: hidden;
 }
-.category-list-item {
+.category-all-page .category-list-item {
   text-align: center;
 }
-.collection-title {
+.content.archive .collection-title {
   display: none;
   visibility: hidden;
 }

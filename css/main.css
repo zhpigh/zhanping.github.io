@@ -1193,7 +1193,7 @@ pre .javascript .function {
 }
 .links-of-author a::before,
 .links-of-author span.exturl::before {
-  background: #f94a9c;
+  background: #42224b;
   border-radius: 50%;
   content: ' ';
   display: inline-block;
@@ -2513,4 +2513,47 @@ hr {
 }
 .sub-menu .menu-item {
   display: inline-block;
+}
+.content.page.posts-expand {
+  padding: 40px;
+}
+.content.page.posts-expand .post-title {
+  display: none;
+  visibility: hidden;
+}
+.content.page.posts-expand .post-meta {
+  display: none;
+  visibility: hidden;
+}
+.tag-cloud-title {
+  display: none;
+  visibility: hidden;
+}
+.category-all-title {
+  display: none;
+  visibility: hidden;
+}
+.category-list-item {
+  text-align: center;
+}
+.collection-title {
+  display: none;
+  visibility: hidden;
+}
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}
+.vcol.vcol-30 {
+  display: none;
+  visibility: hidden;
+}
+.vpower.txt-right {
+  display: none;
+  visibility: hidden;
+}
+.vempty {
+  display: none;
+  visibility: hidden;
 }

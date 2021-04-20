@@ -1193,7 +1193,7 @@ pre .javascript .function {
 }
 .links-of-author a::before,
 .links-of-author span.exturl::before {
-  background: #09c3ff;
+  background: #09ff4a;
   border-radius: 50%;
   content: ' ';
   display: inline-block;
@@ -2544,6 +2544,10 @@ hr {
   margin-top: 60px;
   padding-top: 60px;
   border-top: 1px dashed #ccc;
+}
+.posts-expand .post-meta time {
+  border-bottom: none;
+  cursor: default;
 }
 .pagination {
   border-top: none;

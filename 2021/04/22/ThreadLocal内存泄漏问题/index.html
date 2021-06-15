@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"zhanping.site","root":"/","scheme":"Mist","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"remove","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.xml"};
+  </script>
+
+  <meta name="description" content="1.内存泄漏内存溢出: Memory overflow 没有足够的内存提供申请者使用.内存泄漏: Memory Leak 程序中已经动态分配的堆内存由于某种原因, 程序未释放或者无法释放, 造成系统内部的浪费, 导致程序运行速度减缓甚至系统崩溃等严重结果. 内存泄漏的堆积终将导致内存溢出">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ThreadLocal内存泄漏问题">
+<meta property="og:url" content="https://zhanping.site/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/index.html">
+<meta property="og:site_name" content="詹平&#39;s Blog">
+<meta property="og:description" content="1.内存泄漏内存溢出: Memory overflow 没有足够的内存提供申请者使用.内存泄漏: Memory Leak 程序中已经动态分配的堆内存由于某种原因, 程序未释放或者无法释放, 造成系统内部的浪费, 导致程序运行速度减缓甚至系统崩溃等严重结果. 内存泄漏的堆积终将导致内存溢出">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://zhanping.site/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/image-20210127230839634.png">
+<meta property="og:image" content="https://zhanping.site/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/image-20210127231220865.png">
+<meta property="og:image" content="https://zhanping.site/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/image-20210127231526640.png">
+<meta property="article:published_time" content="2021-04-22T08:06:05.000Z">
+<meta property="article:modified_time" content="2021-05-23T05:48:11.000Z">
+<meta property="article:author" content="詹平">
+<meta property="article:tag" content="juc">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://zhanping.site/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/image-20210127230839634.png">
+
+<link rel="canonical" href="https://zhanping.site/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>ThreadLocal内存泄漏问题 | 詹平's Blog</title>
+  
+
+
+  <script>
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "https://hm.baidu.com/hm.js?839b0567a87217989f13f243cd1b26b3";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">詹平's Blog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://zhanping.site/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="詹平">
+      <meta itemprop="description" content="">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="詹平's Blog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          ThreadLocal内存泄漏问题
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2021-04-22 16:06:05" itemprop="dateCreated datePublished" datetime="2021-04-22T16:06:05+08:00">2021-04-22</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/Java/" itemprop="url" rel="index"><span itemprop="name">Java</span></a>
+                </span>
+            </span>
+
+          
+            <span id="/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/" class="post-meta-item leancloud_visitors" data-flag-title="ThreadLocal内存泄漏问题" title="阅读次数">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span class="leancloud-visitors-count"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2021/04/22/ThreadLocal%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%97%AE%E9%A2%98/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="1-内存泄漏"><a href="#1-内存泄漏" class="headerlink" title="1.内存泄漏"></a>1.内存泄漏</h2><p>内存溢出: Memory overflow <strong>没有足够的内存</strong>提供申请者使用.<br><strong>内存泄漏</strong>: Memory Leak 程序中<strong>已经动态分配的堆内存</strong>由于某种原因, <strong>程序未释放或者无法释放, 造成系统内部的浪费</strong>, 导致程序运行速度减缓甚至系统崩溃等严重结果. 内存泄漏的堆积终将导致内存溢出</p>
+<h2 id="2-key–-gt-ThreadLocal是强引用"><a href="#2-key–-gt-ThreadLocal是强引用" class="headerlink" title="2. key–&gt;ThreadLocal是强引用"></a>2. key–&gt;ThreadLocal是强引用</h2><p>假设<strong>ThreadLocalMap中的key使用了强引用</strong>, 那么会出现内存泄漏吗?</p>
+<p><img src="image-20210127230839634.png" alt="image-20210127230839634"></p>
+<ul>
+<li>假设在业务代码中使用完ThreadLocal, ThreadLocal ref被回收了</li>
+<li>但是因为threadLocalMap的Entry强引用了threadLocal(<strong>key就是threadLocal</strong>), 造成ThreadLocal无法被回收</li>
+<li>在没有手动删除Entry以及<strong>CurrentThread(当前线程</strong>)依然运行的前提下, 始终有<code>强引用链CurrentThread Ref → CurrentThread →Map(ThreadLocalMap)-&gt; entry</code>, Entry就不会被回收( Entry中包括了ThreadLocal实例和value), 导致Entry内存泄漏</li>
+</ul>
+<p>也就是说: ThreadLocalMap中的<code>key使用了强引用, 是无法完全避免内存泄漏的</code></p>
+<h2 id="3-key–-gt-ThreadLocal是弱引用"><a href="#3-key–-gt-ThreadLocal是弱引用" class="headerlink" title="3. key–&gt;ThreadLocal是弱引用"></a>3. key–&gt;ThreadLocal是弱引用</h2><p>假设<strong>ThreadLocalMap中的key使用了弱引用</strong>, 那么会出现内存泄漏吗?</p>
+<p><img src="image-20210127231220865.png" alt="image-20210127231220865"></p>
+<ul>
+<li>假设在业务代码中使用完ThreadLocal, ThreadLocal ref被回收了</li>
+<li>由于threadLocalMap只<strong>持有ThreadLocal的弱引用</strong>, 没有任何强引用指向threadlocal实例（这里Entry不再强引用ThreadLocal了）, 所以threadlocal就可以顺利被gc回收, 此时Entry中的<strong>key = null</strong></li>
+<li>在没有手动删除Entry以及CurrentThread依然运行的前提下, 也存在始终有<code>强引用链CurrentThread Ref → CurrentThread →Map(ThreadLocalMap)-&gt; entry</code>,value就不会被回收, 而这块value永远不会被访问到了（因为key=null）, 导致value内存泄漏</li>
+</ul>
+<p>也就是说: <code>ThreadLocalMap中的key使用了弱引用, 也有可能内存泄漏</code></p>
+<h2 id="4-内存泄漏的真实原因"><a href="#4-内存泄漏的真实原因" class="headerlink" title="4. 内存泄漏的真实原因"></a>4. 内存泄漏的真实原因</h2><p><img src="image-20210127231526640.png" alt="image-20210127231526640"><br>比较以上两种情况,我们就会发现:<br>内存泄漏的发生跟 ThreadLocalIMap 中的 key 是否使用弱引用是没有关系的。那么内存泄漏的的真正原因是什么呢？</p>
+<p>细心的同学会发现，在以上两种<strong>内存泄漏的情况</strong>中．都有两个前提：<strong>主要两个原因</strong><br><strong>1 . 没有手动侧除这个 Entry</strong><br><strong>2 . CurrentThread 当前线程依然运行</strong></p>
+<ul>
+<li>第一点很好理解，只要在使用完下 ThreadLocal ，调用其 remove 方法删除对应的 Entry ，就能避免内存泄漏。</li>
+<li>第二点稍微复杂一点，由于ThreadLocalMap 是 Thread 的一个属性，被当前线程所引用，所以ThreadLocalMap的生命周期跟 Thread 一样长。那么在使用完 ThreadLocal 的使用，如果当前Thread 也随之执行结束， ThreadLocalMap 自然也会被 gc 回收，从根源上避免了内存泄漏。</li>
+</ul>
+<p>综上， ThreadLocal <strong>内存泄漏的根源</strong>是：<br><strong>由于ThreadLocalMap 的生命周期跟 Thread 一样长，如果没有手动删除（remove()方法）对应 key 就会导致内存泄漏．</strong></p>
+<h2 id="5-key要使用弱引用"><a href="#5-key要使用弱引用" class="headerlink" title="5. key要使用弱引用"></a>5. key要使用弱引用</h2><p>**<code>为什么使用弱引用</code>**，根据刚才的分析，我们知道了：</p>
+<p>无论 ThreadLocalMap 中的 <strong>key 使用哪种类型引用都无法完全避免内存泄漏，跟使用弱引用没有关系。</strong></p>
+<p> <strong>要避免内存泄漏有两种方式：</strong></p>
+<ul>
+<li> 1 ．使用完 ThreadLocal ，调用其 remove 方法删除对应的 Entry</li>
+<li> 2 ．使用完 ThreadLocal ，当前 Thread 也随之运行结束</li>
+</ul>
+<p>相对第一种方式，第二种方式显然更不好控制，特别是使用线程池的时候，线程结束是不会销毁的．</p>
+<p>也就是说，只要记得在使用完ThreadLocal 及时的调用 remove ，无论 key 是强引用还是弱引用都不会有问题.</p>
+<p><strong><code>那么为什么 key 要用弱引用呢</code></strong></p>
+<p>事实上，在 <code>ThreadLocalMap 中的set/getEntry 方法</code>中，会<code>对 key 为 null</code>（也即是 ThreadLocal 为 null ）进行判断，如果为 null 的话，那么<code>会把 value 置为 null 的</code>．</p>
+<p> 这就意味着使用完 ThreadLocal , CurrentThread 依然运行的前提下．就算忘记调用 remove 方法，<strong>弱引用比强引用可以多一层保障</strong>：弱引用的 ThreadLocal 会被回收．对应value在下一次 ThreadLocaIMap 调用 set/get/remove 中的任一方法的时候会被清除，从而避免内存泄漏．</p>
+
+    </div>
+
+    
+    
+    
+        <div class="reward-container">
+  <div></div>
+  <button onclick="var qr = document.getElementById('qr'); qr.style.display = (qr.style.display === 'none') ? 'block' : 'none';">
+    打赏
+  </button>
+  <div id="qr" style="display: none;">
+      
+      <div style="display: inline-block;">
+        <img src="/images/wechatpay.jpeg" alt="詹平 微信支付">
+        <p>微信支付</p>
+      </div>
+      
+      <div style="display: inline-block;">
+        <img src="/images/alipay.jpeg" alt="詹平 支付宝">
+        <p>支付宝</p>
+      </div>
+
+  </div>
+</div>
+
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/juc/" rel="tag"># juc</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2015/03/22/volatile/" rel="prev" title="volatile">
+      <i class="fa fa-chevron-left"></i> volatile
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 2015 – 
+  <span itemprop="copyrightYear">2021</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">詹平</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+<script src="/js/custom/next.js"></script>
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick,mail';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : false,
+      appId      : 'dTrPOkg2VDOVVWq2uiOltkva-gzGzoHsz',
+      appKey     : '9qi2CwxAiddn3nm3jooY8Ir3',
+      placeholder: "写下你的评论...",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : true,
+      lang       : 'zh-CN' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : ''
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
